@@ -3,15 +3,16 @@ use reqwest::{self, Client, ClientBuilder};
 
 use crate::{error::TestError, error::TestOutcome, SignupRequest};
 
+#[derive(Clone)]
 pub struct Reader {
     client: Client,
 }
 
 impl Reader {
-    async fn new() -> Result<Self, TestError> {
+    pub async fn new() -> Result<Self, TestError> {
         let client = ClientBuilder::new().cookie_store(true).build().unwrap();
         let response = client
-            .post("http://localhost:3030/session")
+            .post("https://api.stage.fieldnotes.land/session")
             .json(&SignupRequest {
                 name: "test".into(),
                 password: "test".into(),
@@ -24,10 +25,10 @@ impl Reader {
         Ok(Reader { client })
     }
 
-    async fn teardown(&self) -> Result<(), TestError> {
+    pub async fn teardown(&self) -> Result<(), TestError> {
         let response = self
             .client
-            .delete("http://localhost:3030/session")
+            .delete("https://api.stage.fieldnotes.land/session")
             .send()
             .await?;
 
@@ -41,7 +42,7 @@ pub async fn run(client: &Reader) -> Result<TestOutcome, TestError> {
     let start = Utc::now();
     let response = client
         .client
-        .get("http://localhost:3030/notes")
+        .get("https://api.stage.fieldnotes.land/notes/vtwKNKp3swOOSHCOxQv0l3PWQ3OXoctZ")
         .send()
         .await?;
     let elapsed = Utc::now() - start;
