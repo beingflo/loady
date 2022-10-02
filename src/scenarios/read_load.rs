@@ -12,7 +12,7 @@ impl Reader {
     pub async fn new() -> Result<Self, TestError> {
         let client = ClientBuilder::new().cookie_store(true).build().unwrap();
         let response = client
-            .post("https://api.stage.fieldnotes.land/session")
+            .post("http://localhost:3030/session")
             .json(&SignupRequest {
                 name: "test".into(),
                 password: "test".into(),
@@ -28,7 +28,7 @@ impl Reader {
     pub async fn teardown(&self) -> Result<(), TestError> {
         let response = self
             .client
-            .delete("https://api.stage.fieldnotes.land/session")
+            .delete("http://localhost:3030/session")
             .send()
             .await?;
 
@@ -42,11 +42,15 @@ pub async fn run(client: &Reader) -> Result<TestOutcome, TestError> {
     let start = Utc::now();
     let response = client
         .client
-        .get("https://api.stage.fieldnotes.land/notes/vtwKNKp3swOOSHCOxQv0l3PWQ3OXoctZ")
+        .get("http://localhost:3030/notes")
         .send()
         .await?;
     let elapsed = Utc::now() - start;
     assert_eq!(response.status(), 200);
 
-    Ok(TestOutcome::Ok(elapsed))
+    if elapsed.num_milliseconds() > 1000 {
+        Ok(TestOutcome::SlowDown(elapsed))
+    } else {
+        Ok(TestOutcome::Ok(elapsed))
+    }
 }
