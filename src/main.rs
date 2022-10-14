@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use error::TestOutcome;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
@@ -7,7 +7,7 @@ use futures::SinkExt;
 
 use scenarios::read_load::{run, Reader};
 use serde::Serialize;
-use tokio::{sync::Semaphore, time::sleep};
+use tokio::sync::Semaphore;
 
 mod error;
 mod scenarios;
@@ -18,12 +18,7 @@ pub struct SignupRequest {
     password: String,
 }
 
-async fn create_load(
-    client: Reader,
-    semaphore: Arc<Semaphore>,
-    tx: UnboundedSender<TestOutcome>,
-    rps: u64,
-) {
+async fn create_load(client: Reader, semaphore: Arc<Semaphore>, tx: UnboundedSender<TestOutcome>) {
     loop {
         let mut t = tx.clone();
         let ticket = semaphore.clone().acquire_owned().await.unwrap();
@@ -34,7 +29,6 @@ async fn create_load(
             t.send(result).await.unwrap();
             drop(ticket);
         });
-        sleep(Duration::from_micros(1_000_000 / rps)).await;
     }
 }
 
@@ -43,16 +37,16 @@ async fn main() {
     let (tx, mut rx) = unbounded();
 
     let client = Reader::new().await.unwrap();
-    let max_in_flight = 1;
+    let max_in_flight = 100;
     let semaphore = Arc::new(Semaphore::new(max_in_flight));
 
-    let rps = 100;
-
-    tokio::spawn(create_load(client, semaphore.clone(), tx, rps));
+    tokio::spawn(create_load(client, semaphore.clone(), tx));
 
     loop {
         for msg in rx.next().await {
-            println!("{:?}", msg);
+            if let TestOutcome::Ok(duration) = msg {
+                println!("{}", duration.num_milliseconds());
+            }
         }
     }
 }
