@@ -37,16 +37,16 @@ async fn main() {
     let (tx, mut rx) = unbounded();
 
     let client = Reader::new().await.unwrap();
-    let max_in_flight = 100;
+    let max_in_flight = 1;
     let semaphore = Arc::new(Semaphore::new(max_in_flight));
 
     tokio::spawn(create_load(client, semaphore.clone(), tx));
 
     loop {
-        for msg in rx.next().await {
-            if let TestOutcome::Ok(duration) = msg {
-                println!("{}", duration.num_milliseconds());
-            }
+        let msg = rx.next().await.unwrap();
+
+        if let TestOutcome::Ok(duration) = msg {
+            println!("{}", duration.num_milliseconds());
         }
     }
 }
