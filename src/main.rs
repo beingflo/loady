@@ -19,16 +19,27 @@ pub struct SignupRequest {
     password: String,
 }
 
-async fn create_load(client: Reader, semaphore: Arc<Semaphore>, tx: UnboundedSender<TestOutcome>) {
+enum Message {
+    Started,
+    Finished(TestOutcome),
+}
+
+async fn create_load(client: Reader, semaphore: Arc<Semaphore>, tx: UnboundedSender<Message>) {
     loop {
         let mut t = tx.clone();
         let ticket = semaphore.clone().acquire_owned().await.unwrap();
         let client = client.clone();
 
         tokio::spawn(async move {
-            let result = run(&client).await.unwrap();
-            t.send(result).await.unwrap();
-            drop(ticket);
+            t.send(Message::Started).await.unwrap();
+            let result = run(&client).await;
+            match result {
+                Result::Err(error) => println!("{error}"),
+                Result::Ok(res) => {
+                    t.send(Message::Finished(res)).await.unwrap();
+                    drop(ticket);
+                }
+            }
         });
     }
 }
@@ -50,8 +61,24 @@ async fn main() {
 
     let mut num_slow_down = 0;
 
+    let mut num_started = 0;
+    let mut num_finished = 0;
+
     loop {
         let msg = rx.next().await.unwrap();
+
+        if let Message::Started = msg {
+            num_started += 1;
+            continue;
+        } else {
+            num_finished += 1;
+        }
+
+        let msg = if let Message::Finished(outcome) = msg {
+            outcome
+        } else {
+            unreachable!()
+        };
 
         let now = Utc::now();
 
@@ -65,14 +92,22 @@ async fn main() {
         }
 
         if now - last_adjustment > Duration::seconds(5) {
+            let outstanding = num_started - num_finished;
+            println!("Outstanding requests: {outstanding}");
             last_adjustment = now;
 
             if num_slow_down > 0 {
                 // Half the number of requests in flight
                 num_slow_down = 0;
                 let remove = max_in_flight / 2;
+                println!("removing {remove}");
                 max_in_flight = max_in_flight - remove;
-                tokio::spawn(semaphore.clone().acquire_many_owned(remove as u32));
+                let permits = semaphore
+                    .clone()
+                    .acquire_many_owned(remove as u32)
+                    .await
+                    .unwrap();
+                drop(permits);
             } else {
                 // Add 1 to the number of requests in flight
                 semaphore.clone().add_permits(1);
