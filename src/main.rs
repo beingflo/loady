@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::{Duration, Timelike, Utc};
 use error::TestOutcome;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::stream::StreamExt;
@@ -37,16 +38,52 @@ async fn main() {
     let (tx, mut rx) = unbounded();
 
     let client = Reader::new().await.unwrap();
-    let max_in_flight = 1;
+    let mut max_in_flight = 1;
     let semaphore = Arc::new(Semaphore::new(max_in_flight));
 
     tokio::spawn(create_load(client, semaphore.clone(), tx));
 
+    let mut last_adjustment = Utc::now();
+
+    let mut num_last_second = 0;
+    let mut last_second = Utc::now().second();
+
+    let mut num_slow_down = 0;
+
     loop {
         let msg = rx.next().await.unwrap();
 
-        if let TestOutcome::Ok(duration) = msg {
-            println!("{}", duration.num_milliseconds());
+        let now = Utc::now();
+
+        if now.second() == last_second {
+            num_last_second += 1;
+        } else {
+            println!("Requests / second: {num_last_second}");
+
+            last_second = Utc::now().second();
+            num_last_second = 1;
+        }
+
+        if now - last_adjustment > Duration::seconds(2) {
+            last_adjustment = now;
+
+            if num_slow_down > 0 {
+                // Half the number of requests in flight
+                num_slow_down = 0;
+                let remove = max_in_flight / 2;
+                max_in_flight /= 2;
+                tokio::spawn(semaphore.clone().acquire_many_owned(remove as u32));
+            } else {
+                // Add 1 to the number of requests in flight
+                semaphore.clone().add_permits(1);
+                max_in_flight += 1;
+            }
+
+            println!("Number of requests in flight: {max_in_flight}");
+        }
+
+        if let TestOutcome::SlowDown(_) = msg {
+            num_slow_down += 1;
         }
     }
 }
