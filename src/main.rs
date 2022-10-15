@@ -64,14 +64,14 @@ async fn main() {
             num_last_second = 1;
         }
 
-        if now - last_adjustment > Duration::seconds(2) {
+        if now - last_adjustment > Duration::seconds(5) {
             last_adjustment = now;
 
             if num_slow_down > 0 {
                 // Half the number of requests in flight
                 num_slow_down = 0;
                 let remove = max_in_flight / 2;
-                max_in_flight /= 2;
+                max_in_flight = max_in_flight - remove;
                 tokio::spawn(semaphore.clone().acquire_many_owned(remove as u32));
             } else {
                 // Add 1 to the number of requests in flight
