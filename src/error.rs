@@ -1,7 +1,7 @@
 use chrono::Duration;
 use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TestOutcome {
     Ok(Duration),
     SlowDown(Duration),

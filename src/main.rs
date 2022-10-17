@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::{Duration, Timelike, Utc};
+use chrono::{Duration, Utc};
 use error::TestOutcome;
 use futures::channel::mpsc::{unbounded, UnboundedSender};
 use futures::stream::StreamExt;
@@ -8,10 +8,12 @@ use futures::SinkExt;
 
 use scenarios::read_load::{run, Reader};
 use serde::Serialize;
+use statistics::Aggregator;
 use tokio::sync::Semaphore;
 
 mod error;
 mod scenarios;
+mod statistics;
 
 #[derive(Serialize)]
 pub struct SignupRequest {
@@ -50,29 +52,24 @@ async fn main() {
 
     let mut last_adjustment = Utc::now();
 
-    let mut num_last_second = 0;
-    let mut last_second = Utc::now().second();
-
     let mut num_slow_down = 0;
+
+    let mut aggregator = Aggregator::new();
 
     loop {
         let msg = rx.next().await.unwrap();
 
+        aggregator.add_request(msg);
+        aggregator.recompute_statistics();
+
+        println!("{aggregator}");
+
         let now = Utc::now();
 
-        if now.second() == last_second {
-            num_last_second += 1;
-        } else {
-            println!("Requests / second: {num_last_second}");
-
-            last_second = Utc::now().second();
-            num_last_second = 1;
-        }
-
-        if now - last_adjustment > Duration::seconds(5) {
+        if now - last_adjustment > Duration::seconds(1) {
             last_adjustment = now;
 
-            if num_slow_down > 0 {
+            if num_slow_down > 10 {
                 // Half the number of requests in flight
                 num_slow_down = 0;
                 let remove = max_in_flight / 2;
