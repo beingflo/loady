@@ -107,7 +107,7 @@ async fn main() {
                     .acquire_many_owned(remove as u32)
                     .await
                     .unwrap();
-                drop(permits);
+                permits.forget();
             } else {
                 // Add 1 to the number of requests in flight
                 semaphore.clone().add_permits(1);
