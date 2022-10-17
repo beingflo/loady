@@ -19,24 +19,18 @@ pub struct SignupRequest {
     password: String,
 }
 
-enum Message {
-    Started,
-    Finished(TestOutcome),
-}
-
-async fn create_load(client: Reader, semaphore: Arc<Semaphore>, tx: UnboundedSender<Message>) {
+async fn create_load(client: Reader, semaphore: Arc<Semaphore>, tx: UnboundedSender<TestOutcome>) {
     loop {
         let mut t = tx.clone();
         let ticket = semaphore.clone().acquire_owned().await.unwrap();
         let client = client.clone();
 
         tokio::spawn(async move {
-            t.send(Message::Started).await.unwrap();
             let result = run(&client).await;
             match result {
                 Result::Err(error) => println!("{error}"),
                 Result::Ok(res) => {
-                    t.send(Message::Finished(res)).await.unwrap();
+                    t.send(res).await.unwrap();
                     drop(ticket);
                 }
             }
@@ -61,24 +55,8 @@ async fn main() {
 
     let mut num_slow_down = 0;
 
-    let mut num_started = 0;
-    let mut num_finished = 0;
-
     loop {
         let msg = rx.next().await.unwrap();
-
-        if let Message::Started = msg {
-            num_started += 1;
-            continue;
-        } else {
-            num_finished += 1;
-        }
-
-        let msg = if let Message::Finished(outcome) = msg {
-            outcome
-        } else {
-            unreachable!()
-        };
 
         let now = Utc::now();
 
@@ -92,8 +70,6 @@ async fn main() {
         }
 
         if now - last_adjustment > Duration::seconds(5) {
-            let outstanding = num_started - num_finished;
-            println!("Outstanding requests: {outstanding}");
             last_adjustment = now;
 
             if num_slow_down > 0 {
